@@ -1,0 +1,34 @@
+---
+layout: post
+title:  "作業記録 その１"
+date:   2022-12-14 15:57:35 +0900
+categories: diary
+---
+
+jekyllのプロジェクトのはじめの修正をする。これはいつもどおり。
+```ruby
+#Gemfile
+gem 'webrick', '~> 1.7'
+gem 'faraday-retry', '~> 2.0'
+```
+上記を追加。また、gh-pagesを有効にするために`jekyll`をコメントアウトし`github-pages`をアンコメントアウトする。
+
+また、自分のgithubアカウント情報に合わせて`_config.yml`を修正する。
+```yml
+baseurl: "/rails_work_2" 
+url: "https://github.com/Nagasaka-Hiroki" 
+...
+livereload: true
+```
+
+今回の作業記録は`./_post`に入れていく。合間合間で作業するので断続的になるかもしれないが、ひとまず進める。
+
+また、`gh-pages`のブランチをむやみにプッシュしない。(github actionが起動して一月分の決まった分が消費されてしまうので)
+
+念の為起動コマンドを記録する。
+```bash
+bubdle exec jekyll s --livereload-port 50000
+```
+`_config.yml`で`livereload`を有効にしているので`-l`オプションは省略できる。
+
+初期のセットアップ完了したのでこの時点を一度コミットしておく。
