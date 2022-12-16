@@ -1,0 +1,4 @@
+web: unset PORT && bin/rails server -b 172.17.0.2 -p 3000
+css: yarn build:css --watch
+js: yarn build --watch
+livereload: bundle exec guard start -i -g livereload
