@@ -1,0 +1,3 @@
+#!/bin/bash
+PORT=50000
+bundle exec jekyll s --livereload-port $PORT

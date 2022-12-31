@@ -1,0 +1,23 @@
+'データベースの構造を考える。
+@startuml er
+    title データベースの構造
+    left to right direction
+    entity Url {
+        id:integer
+        --
+        url:string
+    }
+    entity Attribute {
+        id:integer
+        --
+        attribute:string
+    }
+    entity UrlAttribute {
+        id:integer
+        --
+        url_id(FK):integer
+        attribute_id(FK):integer
+    }
+    Url||--o{UrlAttribute
+    UrlAttribute}o--||Attribute
+@enduml

@@ -1,0 +1,310 @@
+---
+layout: post
+title:  "作業記録 その2"
+date:   2022-12-16
+categories: diary
+---
+
+本日は体調不良のため無理をせずに少し進める。
+
+本日作業前に何があるといいか考えたところ、条件で絞り込んだときに自動で読み込まれると便利だと思った。それを実現するのはturboだと思ったので少しturboについて調べてみる。（今日はコードを書くより読み込む方がいいと思う）。
+
+- [Turbo Handbook](https://turbo.hotwired.dev/handbook/introduction)
+- [HTML Over The Wire｜Hotwire](https://hotwired.dev/)
+
+Hotwireはおおよそ"TURBO"と"STIMULUS"で構成されている。Hotwireの中核的存在が"TURBO"である。"TURBO"はjavascriptを全く書く必要がないそうで、json形式でフォームを送受信するのではなく、HTML形式でやり取りするのが特徴らしい(厳密にはHotwireの特徴だが…)。また、送受信の手段としてWebsocketを使用するそうだ。
+
+"STIMULUS"は"TURBO"でできないことをjavascriptによって実現するための手段。TURBOは一切javascriptを書かない？そうだがこちらは書くらしい。以前調べたときはHTMLの書き換えが得意なイメージ。
+
+先にrailsのプロジェクトを作っておく。
+
+---
+# railsの操作
+　少なくとも今作ろうとしているものにはaction mailerは使わないのでスキップする。以下を実行する。
+
+```bash
+#ホスト側
+docker run --name dev_bookmark -it -v $(pwd):/home/general_user/rails_dir -p 35729:35729  rails_container:remake_gu
+#コンテナ内
+rails new . -B -css=sass -M --skip-action-mailboc --dev
+#ホスト側
+git add .
+git commit -m "rails new実行"
+rm -v README.md
+#ファイルを編集
+## Gemfile
+gem 'guard-livereload', '~> 2.5', require: false
+gem "rack-livereload"
+##以下を差し替え（というより末尾をコメントアウト）
+gem "tzinfo-data" 
+## development.rb
+config.middleware.insert_after ActionDispatch::Static, Rack::LiveReload
+#コンテナ内
+bundle install
+→失敗。上記をみるとnewコマンドのcssオプションの書き方が変。
+```
+はじめからやり直す。
+```bash
+#ホスト側
+rm -rvf Gemfile Rakefile app/ bin/ config/ config.ru db/ lib/ log/ public/ storage/ test/ tmp/ vendor/ .gitignore 
+rm -v .gitattributes 
+#コンテナ内
+rails new . -B --css=sass -M --skip-action-mailboc --dev
+rm -v README.md
+#ファイルを編集
+## Gemfile
+gem 'guard-livereload', '~> 2.5', require: false
+gem "rack-livereload"
+##以下を差し替え（というより末尾をコメントアウト）
+gem "tzinfo-data" 
+## development.rb
+config.middleware.insert_after ActionDispatch::Static, Rack::LiveReload
+#コンテナ内
+bundle install
+NOTE: Gem::Specification#has_rdoc= is deprecated with no replacement. It will be removed in Rubygems 4
+Gem::Specification#has_rdoc= called from /home/general_user/.rbenv/versions/3.1.2/lib/ruby/gems/3.1.0/gems/builder-3.2.4/builder.gemspec:34.
+Could not find gem 'rails' in source at `/home/general_user/.rbenv/versions/3.1.2/lib/ruby/gems/3.1.0/gems`.
+```
+エラーを読むとローカルにソースがない？らしい。そこし前と挙動が違うみたい。rails は 7.0.4を使いたいので差し替える。
+- [rails｜RubyGems.org｜your community gem host](https://rubygems.org/gems/rails/versions/7.0.4)  
+とりあえず差し替える。なぜローカルのパスを指定していたのだろうか？`--dev`のオプションが影響しているのだろうか？
+
+```ruby
+gem 'rails', '~> 7.0', '>= 7.0.4'
+```
+
+もう一度やり直す。コンテナから作り直す。
+```bash
+#ホスト側
+rm -rvf Gemfile Rakefile app/ bin/ config/ config.ru db/ lib/ log/ public/ storage/ test/ tmp/ vendor/ .gitignore .gitattributes
+git add .
+git commit -m "rails new取り消し"
+```
+削除するときは、addする前なら`git clean -df`がいいかもしれない。
+
+```bash
+docker run --name dev_bookmark -it -v $(pwd):/home/general_user/rails_dir -p 35729:35729  rails_container:remake_gu
+#コンテナ内
+rails new . -B --css=sass -M --skip-action-mailboc
+rm -v README.md
+#ファイルを編集
+## Gemfile
+### livereload
+gem 'guard-livereload', '~> 2.5', require: false
+gem "rack-livereload"
+### 以下を差し替え（というより末尾をコメントアウト）
+gem "tzinfo-data" 
+## development.rb
+config.middleware.insert_after ActionDispatch::Static, Rack::LiveReload
+config.assets.digest = false
+#コンテナ内
+##インストール -B でキャンセルした分をインストールする。
+bundle install
+./bin/rails css:install:sass
+./bin/rails stimulus:install
+./bin/rails javascript:install:esbuild
+./bin/rails turbo:install
+./bin/rails turbo:install:redis
+#Procfile.devを編集
+livereload: bundle exec guard start -i -g livereload
+#Guard fileを作成
+bundle exec guard init livereload
+```
+`bundle add jsbundling-rails`は`--css=sass`オプションで追加されるため実行する必要はない。`redis`は`turbo:install:redis`で追加されるのでこちらも自分で追加する必要はない。  
+
+上記の手順でサーバが起動できるようになったはず。確かめてみる。
+```bash
+./bin/dev
+```
+起動しない。確認
+```bash
+# Procfile.dev
+web: unset PORT && bin/rails server
+```
+謎のunset PORTがあった。これは不要なので消してIPアドレスをセットして書き直す。(疑問：なぜこのような記述になっている？これははじめて起きた。)
+```bash
+web: bin/rails server -b 172.17.0.2
+```
+
+とてもきになる。以前と設定が全然違う。newオプションの違いだろうか？一度やり直す。  
+(サーバも起動しないので)
+
+```bash
+docker run --name dev_bookmark -it -v $(pwd):/home/general_user/rails_dir -p 35729:35729  rails_container:remake_gu
+#コンテナ内
+rails new . -B --css=sass
+rm -v README.md
+#ファイルを編集
+## Gemfile
+  # livereload
+  gem 'guard-livereload', '~> 2.5', require: false
+  gem 'rack-livereload', '~> 0.3.17'
+### 以下を差し替え（というより末尾をコメントアウト）
+gem "tzinfo-data" 
+## development.rb
+config.middleware.insert_after ActionDispatch::Static, Rack::LiveReload
+config.assets.digest = false
+#コンテナ内
+##インストール -B でキャンセルした分をインストールする。
+bundle install
+./bin/rails css:install:sass
+```
+この段階で違う。もしかするとコンテナの影響かもしれない。
+```bash
+docker run --name dev_bookmark -it -v $(pwd):/home/general_user/rails_dir -p 35729:35729  rails_container:dev_gu
+rails new . -B --css=sass
+rm -v README.md
+### 以下を差し替え（というより末尾をコメントアウト）
+gem "tzinfo-data" 
+bundle install
+./bin/rails css:install:sass
+```
+この段階で違う。どうやらコンテナの影響ではなさそう。
+
+以前おそらくなにかのバージョンが変わって以前のセットアップ方法ではできないのだろう。修正分を調べる。
+
+まずはいつもどおりにセットアップしておいて問題を解決する。
+
+```bash
+docker run --name dev_bookmark -it -v $(pwd):/home/general_user/rails_dir -p 35729:35729  rails_container:remake_gu
+#コンテナ内
+rails new . -B --css=sass
+rm -v README.md
+#ファイルを編集
+## Gemfile
+### livereload
+gem 'guard-livereload', '~> 2.5', require: false
+gem "rack-livereload"
+### 以下を差し替え（というより末尾をコメントアウト）
+gem "tzinfo-data" 
+## development.rb
+config.middleware.insert_after ActionDispatch::Static, Rack::LiveReload
+config.assets.digest = false
+#コンテナ内
+##インストール -B でキャンセルした分をインストールする。
+bundle install
+./bin/rails css:install:sass; \
+./bin/rails stimulus:install; \
+./bin/rails javascript:install:esbuild; \
+./bin/rails turbo:install; \
+./bin/rails turbo:install:redis
+#Procfile.devを編集
+web: unset PORT && bin/rails server -b 172.17.0.2 -p 3000
+livereload: bundle exec guard start -i -g livereload
+#Guard fileを作成
+bundle exec guard init livereload
+```
+おそらく上記の設定で`./bin/dev`を起動すると以下のエラーが出るはずだ。
+```bash
+./bin/dev: 8: exec: foreman: not found
+```
+予想通り以下のエラーがでた。
+```bash
+./bin/dev 
+./bin/dev: 8: exec: foreman: not found
+```
+
+- [GitHub - ddollar/foreman: Manage Procfile-based applications](https://github.com/ddollar/foreman)  
+とりあえず上記を参考に、普通に`gem install foreman`を実行する。  
+→上手く行った。単純にforemanがなかっただけ？./bin/devのはじめのコードはforemanが入っていなかったときにインストールするコマンドのはずなのに何故か上手く行かない。  
+とりあえず`gem install foreman`で解決するとわかったのでOKとする。
+
+初期セットアップが比較的きれいにまとめられたので以下にまとめる。
+
+`docker run` から `./bin/dev`までの操作の流れ。
+```bash
+docker run --name dev_bookmark -it -v $(pwd):/home/general_user/rails_dir -p 35729:35729  rails_container:remake_gu
+#コンテナ内
+rails new . -B --css=sass
+#ファイルを編集
+## Gemfile
+  # livereload
+  gem 'guard-livereload', '~> 2.5', require: false
+  gem "rack-livereload"
+  # 以下を差し替え（というより末尾をコメントアウト）
+  gem "tzinfo-data" 
+## development.rb
+  # livereloadを有効にする
+  config.middleware.insert_after ActionDispatch::Static, Rack::LiveReload
+  config.assets.digest = false
+#インストール -B でキャンセルした分をインストールする。(現状の理解では以下)
+bundle install; \
+./bin/rails css:install:sass; \
+./bin/rails stimulus:install; \
+./bin/rails javascript:install:esbuild; \
+./bin/rails turbo:install; \
+./bin/rails turbo:install:redis
+#Procfile.devを編集
+web: unset PORT && bin/rails server -b 172.17.0.2 -p 3000
+livereload: bundle exec guard start -i -g livereload
+#Guard fileを作成
+bundle exec guard init livereload
+#./bin/devで使うforemanのインストール
+gem install foreman
+#設定完了
+./bin/dev
+```
+OK。
+
+コンテナの名前が良くなかったので名前を変える。一応`BookMarkDataBase`の頭文字だったが修正する。
+- [Dockerコンテナ名の変更 - Qiita](https://qiita.com/miwato/items/c77c9d07f5babc050250)  
+上記を参考に以下を実行。古い名前をxxxxxとする。
+
+```bash
+docker rename xxxxx dev_bookmark
+```
+上記までの分を修正しておく。
+
+一度この段階をコミットし念の為プッシュしておく。
+
+---
+# TURBO
+　セットアップ操作に手まどいTURBOにまで手が回らなそうだ。ひとまず、作ることを優先する。
+
+---
+# 製作
+　シンプルなアプリであるためコントローラは一つ、今回は`bookmarks`とする。メソッドは基本的なものだけで十分だと思われる。以下を実行する。
+
+```bash
+./bin/rails g controller bookmarks index show create edit update destroy
+```
+ルーティングは基本的なRESTfulなルーティングでOKなので。以下の設定とする。
+```ruby
+#routes.rb
+  root "bookmarks#index"
+  resources :bookmarks
+```
+```bash
+$ ./bin/rails routes -c bookmarks
+       Prefix Verb   URI Pattern                   Controller#Action
+         root GET    /                             bookmarks#index
+    bookmarks GET    /bookmarks(.:format)          bookmarks#index
+              POST   /bookmarks(.:format)          bookmarks#create
+ new_bookmark GET    /bookmarks/new(.:format)      bookmarks#new
+edit_bookmark GET    /bookmarks/:id/edit(.:format) bookmarks#edit
+     bookmark GET    /bookmarks/:id(.:format)      bookmarks#show
+              PATCH  /bookmarks/:id(.:format)      bookmarks#update
+              PUT    /bookmarks/:id(.:format)      bookmarks#update
+              DELETE /bookmarks/:id(.:format)      bookmarks#destroy
+```
+newを忘れていたので追加する。
+
+次はモデルを追加する。
+
+一応ER図を再度記述する。
+
+|![ER図]({{ site.baseurl }}/assets/images/er.png)|
+|:-:|
+|ER図|
+
+上記のER図を元にモデルを作成する。
+
+```bash
+./bin/rails g model url url:string
+./bin/rails g model attribute attribute:string
+./bin/rails g model UrlAttribute url:references attribute:references
+```
+
+また、リレーションもいつもどおり定義しておく。
+
+本日は遅いのでここまで。
